@@ -189,13 +189,7 @@ import org.thingsboard.server.service.telemetry.TelemetrySubscriptionService;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -381,6 +375,51 @@ public abstract class BaseController {
     @Value("${edges.enabled}")
     @Getter
     protected boolean edgesEnabled;
+
+    @FunctionalInterface
+    public interface ThrowingBiConsumer<T, U> {
+        void accept(T t, U u) throws Exception;
+    }
+
+    private BiConsumer<EntityId, Operation> wrapChecker(ThrowingBiConsumer<EntityId, Operation> throwingConsumer) {
+        return (id, op) -> {
+            try {
+                throwingConsumer.accept(id, op);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        };
+    }
+
+    private final Map<EntityType, BiConsumer<EntityId, Operation>> entityCheckers = createEntityCheckers();
+
+    private Map<EntityType, BiConsumer<EntityId, Operation>> createEntityCheckers() {
+        Map<EntityType, BiConsumer<EntityId, Operation>> map = new EnumMap<>(EntityType.class);
+        map.put(EntityType.ALARM, wrapChecker((id, op) -> checkAlarmId(new AlarmId(id.getId()), op)));
+        map.put(EntityType.DEVICE, wrapChecker((id, op) -> checkDeviceId(new DeviceId(id.getId()), op)));
+        map.put(EntityType.DEVICE_PROFILE, wrapChecker((id, op) -> checkDeviceProfileId(new DeviceProfileId(id.getId()), op)));
+        map.put(EntityType.CUSTOMER, wrapChecker((id, op) -> checkCustomerId(new CustomerId(id.getId()), op)));
+        map.put(EntityType.TENANT, wrapChecker((id, op) -> checkTenantId(TenantId.fromUUID(id.getId()), op)));
+        map.put(EntityType.TENANT_PROFILE, wrapChecker((id, op) -> checkTenantProfileId(new TenantProfileId(id.getId()), op)));
+        map.put(EntityType.RULE_CHAIN, wrapChecker((id, op) -> checkRuleChain(new RuleChainId(id.getId()), op)));
+        map.put(EntityType.RULE_NODE, wrapChecker((id, op) -> checkRuleNode(new RuleNodeId(id.getId()), op)));
+        map.put(EntityType.ASSET, wrapChecker((id, op) -> checkAssetId(new AssetId(id.getId()), op)));
+        map.put(EntityType.ASSET_PROFILE, wrapChecker((id, op) -> checkAssetProfileId(new AssetProfileId(id.getId()), op)));
+        map.put(EntityType.DASHBOARD, wrapChecker((id, op) -> checkDashboardId(new DashboardId(id.getId()), op)));
+        map.put(EntityType.USER, wrapChecker((id, op) -> checkUserId(new UserId(id.getId()), op)));
+        map.put(EntityType.ENTITY_VIEW, wrapChecker((id, op) -> checkEntityViewId(new EntityViewId(id.getId()), op)));
+        map.put(EntityType.EDGE, wrapChecker((id, op) -> checkEdgeId(new EdgeId(id.getId()), op)));
+        map.put(EntityType.WIDGETS_BUNDLE, wrapChecker((id, op) -> checkWidgetsBundleId(new WidgetsBundleId(id.getId()), op)));
+        map.put(EntityType.WIDGET_TYPE, wrapChecker((id, op) -> checkWidgetTypeId(new WidgetTypeId(id.getId()), op)));
+        map.put(EntityType.TB_RESOURCE, wrapChecker((id, op) -> checkResourceInfoId(new TbResourceId(id.getId()), op)));
+        map.put(EntityType.OTA_PACKAGE, wrapChecker((id, op) -> checkOtaPackageId(new OtaPackageId(id.getId()), op)));
+        map.put(EntityType.QUEUE, wrapChecker((id, op) -> checkQueueId(new QueueId(id.getId()), op)));
+        map.put(EntityType.OAUTH2_CLIENT, wrapChecker((id, op) -> checkOauth2ClientId(new OAuth2ClientId(id.getId()), op)));
+        map.put(EntityType.DOMAIN, wrapChecker((id, op) -> checkDomainId(new DomainId(id.getId()), op)));
+        map.put(EntityType.MOBILE_APP, wrapChecker((id, op) -> checkMobileAppId(new MobileAppId(id.getId()), op)));
+        map.put(EntityType.MOBILE_APP_BUNDLE, wrapChecker((id, op) -> checkMobileAppBundleId(new MobileAppBundleId(id.getId()), op)));
+        return Collections.unmodifiableMap(map);
+    }
 
     @ExceptionHandler(Exception.class)
     public void handleControllerException(Exception e, HttpServletResponse response) {
@@ -609,79 +648,19 @@ public abstract class BaseController {
                 throw new ThingsboardException("Parameter entityId can't be empty!", ThingsboardErrorCode.BAD_REQUEST_PARAMS);
             }
             validateId(entityId.getId(), id -> "Incorrect entityId " + id);
-            switch (entityId.getEntityType()) {
-                case ALARM:
-                    checkAlarmId(new AlarmId(entityId.getId()), operation);
-                    return;
-                case DEVICE:
-                    checkDeviceId(new DeviceId(entityId.getId()), operation);
-                    return;
-                case DEVICE_PROFILE:
-                    checkDeviceProfileId(new DeviceProfileId(entityId.getId()), operation);
-                    return;
-                case CUSTOMER:
-                    checkCustomerId(new CustomerId(entityId.getId()), operation);
-                    return;
-                case TENANT:
-                    checkTenantId(TenantId.fromUUID(entityId.getId()), operation);
-                    return;
-                case TENANT_PROFILE:
-                    checkTenantProfileId(new TenantProfileId(entityId.getId()), operation);
-                    return;
-                case RULE_CHAIN:
-                    checkRuleChain(new RuleChainId(entityId.getId()), operation);
-                    return;
-                case RULE_NODE:
-                    checkRuleNode(new RuleNodeId(entityId.getId()), operation);
-                    return;
-                case ASSET:
-                    checkAssetId(new AssetId(entityId.getId()), operation);
-                    return;
-                case ASSET_PROFILE:
-                    checkAssetProfileId(new AssetProfileId(entityId.getId()), operation);
-                    return;
-                case DASHBOARD:
-                    checkDashboardId(new DashboardId(entityId.getId()), operation);
-                    return;
-                case USER:
-                    checkUserId(new UserId(entityId.getId()), operation);
-                    return;
-                case ENTITY_VIEW:
-                    checkEntityViewId(new EntityViewId(entityId.getId()), operation);
-                    return;
-                case EDGE:
-                    checkEdgeId(new EdgeId(entityId.getId()), operation);
-                    return;
-                case WIDGETS_BUNDLE:
-                    checkWidgetsBundleId(new WidgetsBundleId(entityId.getId()), operation);
-                    return;
-                case WIDGET_TYPE:
-                    checkWidgetTypeId(new WidgetTypeId(entityId.getId()), operation);
-                    return;
-                case TB_RESOURCE:
-                    checkResourceInfoId(new TbResourceId(entityId.getId()), operation);
-                    return;
-                case OTA_PACKAGE:
-                    checkOtaPackageId(new OtaPackageId(entityId.getId()), operation);
-                    return;
-                case QUEUE:
-                    checkQueueId(new QueueId(entityId.getId()), operation);
-                    return;
-                case OAUTH2_CLIENT:
-                    checkOauth2ClientId(new OAuth2ClientId(entityId.getId()), operation);
-                    return;
-                case DOMAIN:
-                    checkDomainId(new DomainId(entityId.getId()), operation);
-                    return;
-                case MOBILE_APP:
-                    checkMobileAppId(new MobileAppId(entityId.getId()), operation);
-                    return;
-                case MOBILE_APP_BUNDLE:
-                    checkMobileAppBundleId(new MobileAppBundleId(entityId.getId()), operation);
-                    return;
-                default:
-                    checkEntityId(entityId, entitiesService::findEntityByTenantIdAndId, operation);
+
+            BiConsumer<EntityId, Operation> checker = entityCheckers.get(entityId.getEntityType());
+            if (checker != null) {
+                checker.accept(entityId, operation);
+            } else {
+                checkEntityId(entityId, entitiesService::findEntityByTenantIdAndId, operation);
             }
+        } catch (RuntimeException re) {
+            Throwable cause = re.getCause();
+            if (cause instanceof ThingsboardException) {
+                throw (ThingsboardException) cause;
+            }
+            throw re;
         } catch (Exception e) {
             throw handleException(e, false);
         }
