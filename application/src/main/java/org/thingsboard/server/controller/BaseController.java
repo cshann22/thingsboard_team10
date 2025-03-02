@@ -174,6 +174,8 @@ import org.thingsboard.server.service.entitiy.user.TbUserSettingsService;
 import org.thingsboard.server.service.ota.OtaPackageStateService;
 import org.thingsboard.server.service.profile.TbAssetProfileCache;
 import org.thingsboard.server.service.profile.TbDeviceProfileCache;
+import org.thingsboard.server.service.save.SaveService;
+import org.thingsboard.server.service.delete.DeleteService;
 import org.thingsboard.server.service.security.model.SecurityUser;
 import org.thingsboard.server.service.security.permission.AccessControlService;
 import org.thingsboard.server.service.security.permission.Operation;
@@ -353,6 +355,12 @@ public abstract class BaseController {
 
     @Autowired
     protected QueueService queueService;
+
+    @Autowired
+    protected SaveService saveService;
+
+    @Autowired
+    protected DeleteService deleteService;
 
     @Autowired
     protected EntitiesVersionControlService vcService;
@@ -891,7 +899,7 @@ public abstract class BaseController {
         ActionType actionType = entity.getId() == null ? ActionType.ADDED : ActionType.UPDATED;
         SecurityUser user = getCurrentUser();
         try {
-            E savedEntity = savingFunction.apply(user.getTenantId(), entity);
+            E savedEntity = saveService.saveEntity(user.getTenantId(), entity, savingFunction);
             logEntityAction(user, entityType, savedEntity, actionType);
             return savedEntity;
         } catch (Exception e) {
@@ -903,7 +911,7 @@ public abstract class BaseController {
     protected <E extends HasName & HasId<I>, I extends EntityId> void doDeleteAndLog(EntityType entityType, E entity, BiConsumer<TenantId, I> deleteFunction) throws Exception {
         SecurityUser user = getCurrentUser();
         try {
-            deleteFunction.accept(user.getTenantId(), entity.getId());
+            deleteService.deleteEntity(user.getTenantId(), entity.getId(), deleteFunction);
             logEntityAction(user, entityType, entity, ActionType.DELETED);
         } catch (Exception e) {
             logEntityAction(user, entityType, entity, entity, ActionType.DELETED, e);
